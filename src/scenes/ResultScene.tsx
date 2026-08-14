@@ -2,6 +2,7 @@ import { motion } from 'framer-motion'
 import { Avatar } from '../components/Avatar'
 import { formatNumber } from '../lib/format'
 import { makeBp, loadLayout, type EditProps } from '../lib/editable'
+import { ScreenExtras } from '../components/ScreenExtras'
 import type { Fighter } from '../lib/player'
 
 type Row = { name: string; score: number; you: boolean }
@@ -51,6 +52,7 @@ export function ResultScene({
           ANA MENÜ
         </button>
       </div>
+      {!editMode && <ScreenExtras screen="result" />}
     </motion.div>
   )
 }

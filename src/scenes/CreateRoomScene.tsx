@@ -3,6 +3,8 @@ import type { CSSProperties } from 'react'
 import { useState } from 'react'
 import { IconArrowLeft } from '../components/icons'
 import { DEFAULT_SETTINGS, MODE_BY_SIZE, type RoomSettings } from '../lib/room'
+import { type EditProps } from '../lib/editable'
+import { ScreenExtras, hasScreenExtras } from '../components/ScreenExtras'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 const SIZES = [2, 4, 6, 8]
@@ -44,7 +46,8 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   )
 }
 
-export function CreateRoomScene({ onBack, onCreate }: { onBack: () => void; onCreate: (size: number, s: RoomSettings) => void }) {
+export function CreateRoomScene({ onBack, onCreate, editMode = false }: { onBack: () => void; onCreate: (size: number, s: RoomSettings) => void } & EditProps) {
+  const custom = !editMode && hasScreenExtras('create')
   const [size, setSize] = useState(2)
   const [s, setS] = useState<RoomSettings>(DEFAULT_SETTINGS)
   const set = (patch: Partial<RoomSettings>) => setS((prev) => ({ ...prev, ...patch }))
@@ -52,7 +55,7 @@ export function CreateRoomScene({ onBack, onCreate }: { onBack: () => void; onCr
 
   return (
     <motion.div className="stage" initial={{ opacity: 0, x: 30 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -24 }} transition={{ duration: 0.4, ease: EASE }}>
-      <div className="relative z-[1] flex h-full flex-col">
+      <div className="relative z-[1] flex h-full flex-col" style={{ display: custom ? 'none' : undefined }}>
         <header className="flex items-center gap-3 px-4 pt-safe" style={{ paddingBottom: 8 }}>
           <motion.button onClick={onBack} whileTap={{ scale: 0.9 }} aria-label="Geri" className="glass-soft grid place-items-center rounded-full" style={{ width: 40, height: 40, color: 'var(--color-ink-1)' }}>
             <IconArrowLeft size={20} />
@@ -141,6 +144,12 @@ export function CreateRoomScene({ onBack, onCreate }: { onBack: () => void; onCr
           </motion.button>
         </div>
       </div>
+      {!editMode && <ScreenExtras screen="create" />}
+      {custom && (
+        <button onClick={() => onCreate(size, s)} className="btn-primary press" style={{ position: 'absolute', left: '50%', top: '88%', transform: 'translateX(-50%)', zIndex: 7, height: 54, width: '76%', fontSize: 17 }}>
+          ODAYI KUR
+        </button>
+      )}
     </motion.div>
   )
 }

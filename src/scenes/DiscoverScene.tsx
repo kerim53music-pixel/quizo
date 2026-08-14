@@ -2,6 +2,8 @@ import { motion } from 'framer-motion'
 import { useMemo, useState } from 'react'
 import { IconArrowLeft, IconMic, IconMicOff } from '../components/icons'
 import { mockOpenRooms, MODE_BY_SIZE, type OpenRoom } from '../lib/room'
+import { type EditProps } from '../lib/editable'
+import { ScreenExtras } from '../components/ScreenExtras'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 const FILTERS = [
@@ -53,7 +55,7 @@ function RoomCard({ r, onJoin }: { r: OpenRoom; onJoin: () => void }) {
   )
 }
 
-export function DiscoverScene({ onBack, onJoin }: { onBack: () => void; onJoin: (r: OpenRoom) => void }) {
+export function DiscoverScene({ onBack, onJoin, editMode = false }: { onBack: () => void; onJoin: (r: OpenRoom) => void } & EditProps) {
   const [rooms] = useState<OpenRoom[]>(() => mockOpenRooms())
   const [filter, setFilter] = useState(0)
   const shown = useMemo(() => (filter === 0 ? rooms : rooms.filter((r) => r.size === filter)), [rooms, filter])
@@ -103,6 +105,7 @@ export function DiscoverScene({ onBack, onJoin }: { onBack: () => void; onJoin: 
           )}
         </div>
       </div>
+      {!editMode && <ScreenExtras screen="discover" />}
     </motion.div>
   )
 }

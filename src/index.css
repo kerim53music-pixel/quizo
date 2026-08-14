@@ -145,6 +145,17 @@
     background: var(--color-bg-0);
   }
 
+  /* Real touchscreens: always fill the actual phone screen edge-to-edge, no letterbox bars.
+     The aspect-ratio cap above is only for desktop mouse windows to preview a phone shape.
+     --app-vh is set from JS (window.innerHeight) because iOS Safari's address-bar animation
+     can leave `dvh` briefly out of sync with the real visible height, showing a gap at the bottom. */
+  @media (hover: none) and (pointer: coarse) {
+    .device {
+      width: 100vw;
+      height: var(--app-vh, 100dvh);
+    }
+  }
+
   .grain::after {
     content: '';
     position: absolute;
@@ -215,11 +226,17 @@
     font-weight: 800;
     font-size: 17px;
     overflow: hidden;
-    text-shadow: 0 2px 3px rgba(0,0,0,0.4);
-    box-shadow: 0 6px 0 rgba(0,0,0,0.3), 0 14px 24px -8px rgba(0,0,0,0.5), inset 0 2px 0 rgba(255,255,255,0.45), inset 0 -7px 14px rgba(0,0,0,0.28);
-    transition: transform 90ms var(--ease-quint), filter 90ms;
+    text-shadow: 0 2px 4px rgba(0,0,0,0.55);
+    border: 2px solid rgba(255,255,255,0.28);
+    box-shadow:
+      0 7px 0 rgba(0,0,0,0.38),
+      0 18px 30px -10px rgba(0,0,0,0.6),
+      inset 0 3px 0 rgba(255,255,255,0.55),
+      inset 0 -9px 18px rgba(0,0,0,0.34),
+      0 0 30px -14px currentColor;
+    transition: transform 90ms var(--ease-quint), filter 90ms, box-shadow 160ms;
   }
-  .ans:not(:disabled):active { transform: translateY(4px); filter: brightness(0.96); }
+  .ans:not(:disabled):active { transform: translateY(5px); filter: brightness(0.95); box-shadow: 0 2px 0 rgba(0,0,0,0.38), 0 8px 16px -8px rgba(0,0,0,0.6), inset 0 3px 0 rgba(255,255,255,0.4), inset 0 -6px 14px rgba(0,0,0,0.4); }
   .ans-sheen {
     position: absolute;
     top: 5px;
@@ -243,10 +260,30 @@
     box-shadow: inset 0 2px 4px rgba(0,0,0,0.4);
   }
   .board-panel {
-    background: linear-gradient(180deg, rgba(38,54,120,0.85), rgba(20,30,78,0.9));
-    border: 1px solid rgba(120,150,255,0.35);
-    box-shadow: 0 14px 30px -14px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,255,0.12);
-    backdrop-filter: blur(6px);
+    position: relative;
+    background:
+      linear-gradient(180deg, rgba(46,62,140,0.88), rgba(14,22,62,0.94));
+    border: 1.5px solid rgba(140,175,255,0.45);
+    border-radius: 16px;
+    box-shadow:
+      0 16px 34px -14px rgba(0,0,0,0.75),
+      inset 0 1px 0 rgba(255,255,255,0.24),
+      inset 0 -10px 22px rgba(0,0,0,0.32),
+      0 0 26px -14px rgba(96,165,250,0.9);
+    backdrop-filter: blur(10px) saturate(1.1);
+    -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  }
+  /* premium cam parlaması */
+  .board-panel::before {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 10px;
+    right: 42%;
+    height: 32%;
+    border-radius: 999px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.22), rgba(255,255,255,0));
+    pointer-events: none;
   }
   .board-main { display: flex; gap: 12px; align-items: stretch; }
   .board-side { width: 210px; flex-shrink: 0; }
@@ -441,6 +478,42 @@
   0% { transform: translateX(-140%) skewX(-20deg); }
   60%, 100% { transform: translateX(240%) skewX(-20deg); }
 }
+
+/* Oyun tahtası — puan uçuşu / seri */
+@keyframes qz-score-fly {
+  0% { opacity: 0; transform: translate(-50%, 0) scale(0.7); }
+  18% { opacity: 1; transform: translate(-50%, -14px) scale(1.15); }
+  100% { opacity: 0; transform: translate(-50%, -78px) scale(1); }
+}
+.qz-score-fly {
+  animation: qz-score-fly 1.15s var(--ease-quint) forwards;
+}
+@keyframes qz-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-7px); }
+  40% { transform: translateX(6px); }
+  60% { transform: translateX(-4px); }
+  80% { transform: translateX(3px); }
+}
+.qz-shake { animation: qz-shake 0.42s ease-in-out; }
+
+/* Editörde yerleştirilen assetler için opsiyonel animasyonlar */
+@keyframes qz-orbit {
+  0%, 100% { transform: translate(0, 0); }
+  25% { transform: translate(5px, -5px); }
+  50% { transform: translate(0, -9px); }
+  75% { transform: translate(-5px, -5px); }
+}
+.qz-anim-orbit { animation: qz-orbit 3s ease-in-out infinite; }
+
+@keyframes qz-seq4 {
+  0%, 15% { left: calc(var(--qz-base-left, 0%) + 0%); filter: brightness(1); }
+  22%, 40% { left: calc(var(--qz-base-left, 0%) + 22.5%); filter: brightness(1.35); }
+  47%, 65% { left: calc(var(--qz-base-left, 0%) + 45%); filter: brightness(1.35); }
+  72%, 90% { left: calc(var(--qz-base-left, 0%) + 67.5%); filter: brightness(1.35); }
+  97%, 100% { left: calc(var(--qz-base-left, 0%) + 0%); filter: brightness(1); }
+}
+.qz-anim-seq4 { animation: qz-seq4 6.4s ease-in-out infinite; }
 
 @media (prefers-reduced-motion: reduce) {
   .blob, .sheen::after, .rot-border::before, .tron-floor { animation: none !important; }

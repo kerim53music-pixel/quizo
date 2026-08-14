@@ -79,7 +79,7 @@ export function HomeScene({ me, onSelect }: { me: Fighter; onSelect?: (key: stri
       style={{ position: 'absolute', inset: 0, overflow: 'hidden' }}
     >
       {/* Background */}
-      <img src={saved?.bg || '/home-bg.png'} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+      <img src={asset(saved?.bg || '/home-bg.png')} alt="" draggable={false} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
 
       {/* Scaled base canvas */}
       <div

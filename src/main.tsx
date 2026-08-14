@@ -13,6 +13,16 @@ import './index.css'
 import App from './App.tsx'
 import { hydrateFromCloud } from './lib/cloud'
 
+// iOS Safari'de adres çubuğu kayarken `dvh` bazen anlık güncellenmiyor ve altta
+// boşluk bırakıyor. Gerçek pencere yüksekliğini JS ile ölçüp CSS değişkenine yazıyoruz.
+function setAppVh() {
+  document.documentElement.style.setProperty('--app-vh', `${window.innerHeight}px`)
+}
+setAppVh()
+window.addEventListener('resize', setAppVh)
+window.addEventListener('orientationchange', setAppVh)
+window.visualViewport?.addEventListener('resize', setAppVh)
+
 // Buluttaki yerleşimleri indir, SONRA uygulamayı çiz (sahneler yerleşimi senkron okuyor).
 async function boot() {
   await hydrateFromCloud()

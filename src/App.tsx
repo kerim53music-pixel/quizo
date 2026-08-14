@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { AnimatePresence } from 'framer-motion'
 import { AmbientBackground } from './components/AmbientBackground'
 import { SplashScene } from './scenes/SplashScene'
@@ -15,6 +15,7 @@ import { EditorScene } from './scenes/EditorScene'
 import { TuningPanel } from './components/TuningPanel'
 import { ME, pickOpponent, type Fighter } from './lib/player'
 import { makeRoom, DEFAULT_SETTINGS, type Room, type Member } from './lib/room'
+import { createCloudRoom, joinCloudRoom, subscribeRoom, toRoom, leaveCloudRoom } from './lib/rooms'
 
 type Scene = 'splash' | 'home' | 'career' | 'search' | 'vs' | 'match' | 'create' | 'join' | 'discover' | 'lobby' | 'editor'
 type Teams = { red: Member[]; blue: Member[] }
@@ -34,6 +35,19 @@ export default function App() {
   const [opponent, setOpponent] = useState<Fighter | null>(null)
   const [room, setRoom] = useState<Room | null>(null)
   const [teams, setTeams] = useState<Teams | null>(null)
+  const [cloudCode, setCloudCode] = useState<string | null>(null)
+
+  // Odayı canlı dinle: üye girer/çıkar, hazır olur, host başlatınca herkes maça geçer
+  useEffect(() => {
+    if (!cloudCode) return
+    return subscribeRoom(cloudCode, (r) => {
+      setRoom(toRoom(r))
+      if (r.status === 'playing') {
+        setTeams({ red: toRoom(r).red, blue: toRoom(r).blue })
+        setScene((s) => (s === 'lobby' ? 'match' : s))
+      }
+    })
+  }, [cloudCode])
 
   const finishSplash = () => {
     try {
@@ -50,7 +64,7 @@ export default function App() {
       <div className="app-shell grain">
         <div className="device">
         <AmbientBackground />
-        <AnimatePresence mode="wait">
+        <AnimatePresence>
           {scene === 'splash' && <SplashScene key="splash" onDone={finishSplash} />}
 
           {scene === 'home' && (
@@ -98,8 +112,14 @@ export default function App() {
             <CreateRoomScene
               key="create"
               onBack={() => setScene('home')}
-              onCreate={(size, s) => {
-                setRoom(makeRoom(size, s, ME.name))
+              onCreate={async (size, s) => {
+                const r = await createCloudRoom(size, s, ME.name)
+                if (r) {
+                  setCloudCode(r.code)
+                  setRoom(toRoom(r))
+                } else {
+                  setRoom(makeRoom(size, s, ME.name)) // bulut yoksa tek cihaz
+                }
                 setScene('lobby')
               }}
             />
@@ -109,9 +129,13 @@ export default function App() {
             <JoinRoomScene
               key="join"
               onBack={() => setScene('home')}
-              onJoin={(code) => {
-                setRoom(makeRoom(4, DEFAULT_SETTINGS, ME.name, code))
+              onJoin={async (code) => {
+                const { room: r, error } = await joinCloudRoom(code, ME.name)
+                if (error || !r) return error || 'Katılınamadı'
+                setCloudCode(r.code)
+                setRoom(toRoom(r))
                 setScene('lobby')
+                return null
               }}
             />
           )}
@@ -131,7 +155,12 @@ export default function App() {
             <LobbyScene
               key="lobby"
               room={room}
-              onLeave={() => setScene('home')}
+              cloudCode={cloudCode ?? undefined}
+              onLeave={() => {
+                if (cloudCode) void leaveCloudRoom(cloudCode)
+                setCloudCode(null)
+                setScene('home')
+              }}
               onStart={() => {
                 if (room) setTeams({ red: room.red, blue: room.blue })
                 setScene('match')

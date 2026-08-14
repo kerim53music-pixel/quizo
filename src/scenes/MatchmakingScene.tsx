@@ -6,9 +6,46 @@ import { RankBadge } from '../components/RankBadge'
 import { IconX } from '../components/icons'
 import { formatNumber } from '../lib/format'
 import { makeBp, loadLayout, type EditProps } from '../lib/editable'
+import { ScreenExtras, hasScreenExtras } from '../components/ScreenExtras'
 import type { Fighter } from '../lib/player'
 
 const EASE = [0.22, 1, 0.36, 1] as const
+const STEPS = ['BAĞLANIYOR', 'RAKİP ARANIYOR', 'RAKİP BULUNDU', 'HAZIRLANIYOR']
+const STEP_MS = 1000
+
+function ConnectSteps({ active }: { active: number }) {
+  return (
+    <div className="flex items-center" style={{ width: '100%' }}>
+      {STEPS.map((label, i) => (
+        <div key={label} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', flex: i < STEPS.length - 1 ? '1 1 0' : '0 0 auto' }}>
+          <div className="flex items-center" style={{ width: '100%' }}>
+            <span
+              style={{
+                width: 30,
+                height: 30,
+                minWidth: 30,
+                borderRadius: '50%',
+                display: 'block',
+                background: i <= active ? 'radial-gradient(circle, #7dd3fc, #2563eb)' : 'rgba(255,255,255,0.08)',
+                borderWidth: 2,
+                borderStyle: 'solid',
+                borderColor: i <= active ? '#38bdf8' : 'rgba(255,255,255,0.18)',
+                boxShadow: i === active ? '0 0 16px 4px rgba(56,189,248,0.85)' : i < active ? '0 0 8px 1px rgba(56,189,248,0.5)' : 'none',
+                transition: 'all 0.4s ease',
+              }}
+            />
+            {i < STEPS.length - 1 && (
+              <div style={{ flex: 1, height: 3, borderRadius: 2, background: i < active ? '#38bdf8' : 'rgba(255,255,255,0.12)', transition: 'background 0.4s ease' }} />
+            )}
+          </div>
+          <span style={{ fontSize: 9.5, fontWeight: 800, marginTop: 6, color: i <= active ? '#7dd3fc' : 'rgba(255,255,255,0.4)', textAlign: 'center', letterSpacing: '0.01em', whiteSpace: 'nowrap' }}>
+            {label}
+          </span>
+        </div>
+      ))}
+    </div>
+  )
+}
 
 function Dots() {
   return (
@@ -41,20 +78,31 @@ export function MatchmakingScene({
 } & EditProps) {
   const done = useRef(false)
   const [secs, setSecs] = useState(0)
+  const [step, setStep] = useState(0)
   const bp = makeBp(editMode ? layout : loadLayout('search'), editMode, selectedId, onBlockDown)
+  // Kendi tasarımın varsa varsayılan sahne HİÇ çizilmez (bir an bile görünmesin)
+  const custom = !editMode && hasScreenExtras('search')
 
   useEffect(() => {
     if (editMode) return
-    const t = setTimeout(() => {
-      if (!done.current) {
-        done.current = true
-        onFound()
+    let i = 0
+    setStep(0)
+    const stepIv = setInterval(() => {
+      i++
+      if (i >= STEPS.length) {
+        clearInterval(stepIv)
+        if (!done.current) {
+          done.current = true
+          onFound()
+        }
+      } else {
+        setStep(i)
       }
-    }, 2800)
-    const iv = setInterval(() => setSecs((s) => s + 1), 1000)
+    }, STEP_MS)
+    const secsIv = setInterval(() => setSecs((s) => s + 1), 1000)
     return () => {
-      clearTimeout(t)
-      clearInterval(iv)
+      clearInterval(stepIv)
+      clearInterval(secsIv)
     }
   }, [onFound, editMode])
 
@@ -66,7 +114,7 @@ export function MatchmakingScene({
       exit={{ opacity: 0, scale: 1.05, filter: 'blur(4px)' }}
       transition={{ duration: 0.4, ease: EASE }}
     >
-      <div className="relative z-[1] flex h-full flex-col items-center justify-center gap-7 px-6">
+      <div className="relative z-[1] flex h-full flex-col items-center justify-center gap-7 px-6" style={{ display: custom ? 'none' : undefined }}>
         <motion.h1
           onPointerDown={bp('title').onPointerDown}
           initial={editMode ? false : { opacity: 0, y: -10 }}
@@ -169,6 +217,41 @@ export function MatchmakingScene({
           İPTAL
         </motion.button>
       </div>
+      {!editMode && <ScreenExtras screen="search" />}
+      {/* Sırayla yanan ışıklar — editörde "Işıklar" parçası olarak taşınır/boyutlandırılır */}
+      <div
+        {...bp('steps')}
+        style={{ position: 'absolute', left: '5%', top: '56%', width: '90%', zIndex: editMode ? 40 : 7, padding: editMode ? '14px 0' : undefined, ...bp('steps').style }}
+      >
+        <ConnectSteps active={editMode ? 1 : step} />
+      </div>
+
+      {/* İPTAL — kendi tasarımın gösterilirken de her zaman erişilebilir */}
+      {custom && (
+        <button
+          {...bp('cancel')}
+          onClick={onCancel}
+          className="glass-soft flex items-center gap-2"
+          style={{
+            position: 'absolute',
+            left: '50%',
+            top: '88%',
+            transform: 'translateX(-50%)',
+            zIndex: 7,
+            padding: '11px 26px',
+            borderRadius: 14,
+            fontFamily: 'var(--font-display)',
+            fontWeight: 800,
+            fontSize: 15,
+            letterSpacing: '0.04em',
+            color: '#fff',
+            ...bp('cancel').style,
+          }}
+        >
+          <IconX size={18} />
+          İPTAL
+        </button>
+      )}
     </motion.div>
   )
 }

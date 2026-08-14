@@ -4,6 +4,7 @@ import { RankBadge } from '../components/RankBadge'
 import { IconArrowLeft, IconBolt, IconUsers } from '../components/icons'
 import { formatNumber } from '../lib/format'
 import { makeBp, loadLayout, type EditProps, type BlkProps } from '../lib/editable'
+import { ScreenExtras } from '../components/ScreenExtras'
 import { CAREER } from '../lib/player'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -243,6 +244,7 @@ export function CareerScene({
           </motion.button>
         </div>
       </div>
+      {!editMode && <ScreenExtras screen="career" />}
     </motion.div>
   )
 }

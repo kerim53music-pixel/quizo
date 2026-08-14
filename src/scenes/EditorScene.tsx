@@ -6,13 +6,19 @@ import { LobbyScene } from './LobbyScene'
 import { QuizBoardScene } from './QuizBoardScene'
 import { MatchmakingScene } from './MatchmakingScene'
 import { ResultScene } from './ResultScene'
+import { CreateRoomScene } from './CreateRoomScene'
+import { JoinRoomScene } from './JoinRoomScene'
+import { DiscoverScene } from './DiscoverScene'
 import { ME, type Fighter } from '../lib/player'
 import { makeRoom, DEFAULT_SETTINGS } from '../lib/room'
 import { loadLayout, saveLayout, type ElemLayout, type EditProps } from '../lib/editable'
-import { pushToCloud } from '../lib/cloud'
+import { pushToCloud, supabase } from '../lib/cloud'
 import { asset } from '../lib/asset'
 
-type Item = { id: string; src: string; x: number; y: number; w: number }
+type Anim = 'orbit' | 'seq4' | undefined
+type Item = { id: string; src: string; x: number; y: number; w: number; anim?: Anim }
+const ANIM_CYCLE: Anim[] = [undefined, 'orbit', 'seq4']
+const ANIM_LABEL: Record<string, string> = { orbit: '🌀 Daire', seq4: '➡️ Sıra' }
 type ScreenData = { bg: string | null; items: Item[] }
 type Seed = { bg: string | null; items: { src: string; x: number; y: number; w: number }[] }
 
@@ -29,6 +35,9 @@ const SCREENS = [
   { key: 'vs', label: 'VS Ekranı' },
   { key: 'result', label: 'Sonuç' },
   { key: 'career', label: 'Kariyer' },
+  { key: 'create', label: 'Oda Kur' },
+  { key: 'join', label: 'Odaya Katıl' },
+  { key: 'discover', label: 'Odaları Keşfet' },
 ]
 
 // Ana Sayfa'nın gerçek yerleşimi (HomeScene base 1000x1520) → oran (0..1). Her parça taşınır/silinir.
@@ -62,9 +71,9 @@ const BLK_LABELS: Record<string, string> = {
   'player-0': 'Oyuncu 1', 'player-1': 'Oyuncu 2', 'player-2': 'Oyuncu 3', 'player-3': 'Oyuncu 4',
   qcard: 'Soru Kartı', category: 'Kategori', question: 'Soru Metni',
   'ans-0': 'A Şık', 'ans-1': 'B Şık', 'ans-2': 'C Şık', 'ans-3': 'D Şık',
-  'pu-time': '+10sn Joker', 'pu-fifty': '%50 Joker', 'pu-skip': 'Pas Geç', chat: 'Sohbet',
+  'pu-time': '+10sn Joker', 'pu-fifty': '%50 Joker', 'pu-skip': 'Pas Geç', chat: 'Sohbet', buzzer: 'Buzzer',
   // Rakip Aranıyor
-  title: 'Başlık', radar: 'Radar', mecard: 'Oyuncu Kartı', secs: 'Süre', cancel: 'İptal',
+  title: 'Başlık', radar: 'Radar', mecard: 'Oyuncu Kartı', secs: 'Süre', cancel: 'İptal', steps: 'Işıklar',
   // VS
   'me-card': 'Sen', vs: 'VS', 'foe-card': 'Rakip',
   // Kariyer
@@ -79,7 +88,7 @@ const SEEDS: Record<string, Seed> = { home: HOME_SEED }
 const isSeeded = (s: string) => s === 'home'
 const paletteFor = (s: string) => (s === 'home' ? HOME_ASSETS : BOARD_ASSETS)
 // Parça-düzenleme (gerçek sahne, editMode) desteklenen ekranlar — home hariç hepsi
-const EDITABLE_SCENES = ['board', 'lobby', 'search', 'vs', 'career', 'result']
+const EDITABLE_SCENES = ['board', 'lobby', 'search', 'vs', 'career', 'result', 'create', 'join', 'discover']
 const UPLOADS_KEY = 'quizo-uploads'
 
 const KEY = (s: string) => `quizo-screen-${s}`
@@ -116,6 +125,9 @@ function ScreenPreview({ screen, me, opponent, edit }: { screen: string; me: Fig
   else if (screen === 'vs') node = <VsScene me={me} opponent={opponent} onStart={noop} {...e} />
   else if (screen === 'lobby') node = <LobbyScene room={room} onLeave={noop} onStart={noop} {...e} />
   else if (screen === 'result') node = <ResultScene me={me} onExit={noop} {...e} />
+  else if (screen === 'create') node = <CreateRoomScene onBack={noop} onCreate={noop} {...e} />
+  else if (screen === 'join') node = <JoinRoomScene onBack={noop} onJoin={noop} {...e} />
+  else if (screen === 'discover') node = <DiscoverScene onBack={noop} onJoin={noop} {...e} />
   if (!node) return null
   return <div style={{ position: 'absolute', inset: 0, pointerEvents: e.editMode ? 'auto' : 'none', overflow: 'hidden' }}>{node}</div>
 }
@@ -128,6 +140,7 @@ export function EditorScene({ onExit }: { onExit: () => void }) {
   const [menuOpen, setMenuOpen] = useState(false)
   const [toast, setToast] = useState('')
   const [showGrid, setShowGrid] = useState(true)
+  const [palOpen, setPalOpen] = useState(true)
   const [snap, setSnap] = useState(true)
   const [elemLayout, setElemLayout] = useState<ElemLayout>({})
   const [selBlk, setSelBlk] = useState<string | null>(null)
@@ -283,19 +296,56 @@ export function EditorScene({ onExit }: { onExit: () => void }) {
     window.setTimeout(() => setToast(''), 1400)
   }
   const save = async () => {
+    // Yüklenen görseller base64 (data:) olarak taşınıyor; tarayıcı deposunu (5MB) doldurup
+    // kaydı imkânsız hâle getiriyor. Kaydederken bir kez Storage'a taşıyıp kısa URL'e çeviriyoruz.
+    const conv = new Map<string, string>()
+    const toUrl = async (dataUrl: string): Promise<string> => {
+      const hit = conv.get(dataUrl)
+      if (hit) return hit
+      const blob = await (await fetch(dataUrl)).blob()
+      const ext = blob.type === 'image/jpeg' ? 'jpg' : blob.type === 'image/webp' ? 'webp' : 'png'
+      const path = `u/${uid()}${uid()}.${ext}`
+      const { error } = await supabase.storage.from('assets').upload(path, blob, { upsert: true, contentType: blob.type || 'image/png' })
+      if (error) throw error
+      const url = supabase.storage.from('assets').getPublicUrl(path).data.publicUrl
+      conv.set(dataUrl, url)
+      return url
+    }
+
+    let nextItems = items
+    let nextBg = bg
+    let nextUploads = uploads
+    const pending = items.filter((i) => i.src.startsWith('data:')).length
+    if (pending) flash(`${pending} görsel buluta yükleniyor…`)
     try {
-      if (editComp) saveLayout(screen, elemLayout)
-      localStorage.setItem(KEY(screen), JSON.stringify({ bg, items }))
+      nextItems = await Promise.all(items.map(async (it) => (it.src.startsWith('data:') ? { ...it, src: await toUrl(it.src) } : it)))
+      if (nextBg?.startsWith('data:')) nextBg = await toUrl(nextBg)
+      nextUploads = await Promise.all(uploads.map((u) => (u.startsWith('data:') ? toUrl(u) : Promise.resolve(u))))
     } catch {
-      flash('Kaydedilemedi (çok büyük?)')
+      flash('Görseller yüklenemedi — internet?')
       return
     }
-    flash('Kaydediliyor…')
-    const results = await Promise.all([
+    setItems(nextItems)
+    setBg(nextBg)
+    setUploads(nextUploads)
+
+    // ANA kayıt = bulut (tarayıcı deposundan bağımsız)
+    const ok = await Promise.all([
       editComp ? pushToCloud(`quizo-layout-${screen}`, elemLayout) : Promise.resolve(true),
-      pushToCloud(KEY(screen), { bg, items }),
+      pushToCloud(KEY(screen), { bg: nextBg, items: nextItems }),
+      pushToCloud(UPLOADS_KEY, nextUploads),
     ])
-    flash(results.every(Boolean) ? 'Buluta kaydedildi ✓ (canlıda da görünür)' : 'Yerel kaydedildi — bulut BAŞARISIZ ⚠')
+
+    // Yerel kopya — dolu olsa bile kaydı bozmaz
+    try {
+      if (editComp) saveLayout(screen, elemLayout)
+      localStorage.setItem(KEY(screen), JSON.stringify({ bg: nextBg, items: nextItems }))
+      localStorage.setItem(UPLOADS_KEY, JSON.stringify(nextUploads))
+    } catch {
+      /* yerel depo dolu; bulut kaydı yeterli */
+    }
+
+    flash(ok.every(Boolean) ? 'Buluta kaydedildi ✓ (canlıda da görünür)' : 'BULUT KAYDI BAŞARISIZ ⚠')
   }
   const resetSeed = () => {
     if (editComp) {
@@ -347,6 +397,7 @@ export function EditorScene({ onExit }: { onExit: () => void }) {
         <button onClick={copyJson} style={btn}>JSON</button>
         <button onClick={() => setShowGrid((g) => !g)} style={showGrid ? { ...btn, background: 'linear-gradient(180deg,#7c3aed,#3b82f6)' } : btn}>▦ Izgara</button>
         <button onClick={() => setSnap((s) => !s)} style={snap ? { ...btn, background: 'linear-gradient(180deg,#7c3aed,#3b82f6)' } : btn}>🧲 Yapış</button>
+        <button onClick={() => setPalOpen((p) => !p)} style={btn}>{palOpen ? '▾ Paleti Gizle' : '▴ Palet'}</button>
       </div>
 
       {/* Canvas — gerçek telefon oranı (seçili-öğe barı yüzer, düzeni bozmaz) */}
@@ -376,7 +427,20 @@ export function EditorScene({ onExit }: { onExit: () => void }) {
               <div
                 key={it.id}
                 onPointerDown={(e) => startDrag(e, it.id, 'move')}
-                style={{ position: 'absolute', left: `${it.x * 100}%`, top: `${it.y * 100}%`, width: `${it.w * 100}%`, cursor: 'move', outline: sel === it.id ? '2px solid #38bdf8' : 'none', touchAction: 'none', pointerEvents: 'auto' }}
+                className={it.anim === 'orbit' ? 'qz-anim-orbit' : it.anim === 'seq4' ? 'qz-anim-seq4' : undefined}
+                style={
+                  {
+                    position: 'absolute',
+                    left: `${it.x * 100}%`,
+                    top: `${it.y * 100}%`,
+                    width: `${it.w * 100}%`,
+                    cursor: 'move',
+                    outline: sel === it.id ? '2px solid #38bdf8' : 'none',
+                    touchAction: 'none',
+                    pointerEvents: 'auto',
+                    ['--qz-base-left' as string]: `${it.x * 100}%`,
+                  } as CSSProperties
+                }
               >
                 <img src={asset(it.src)} alt="" draggable={false} style={{ width: '100%', height: 'auto', display: 'block', pointerEvents: 'none' }} />
                 {sel === it.id && (
@@ -409,34 +473,47 @@ export function EditorScene({ onExit }: { onExit: () => void }) {
           )}
         </div>
 
-        {/* Seçili öğe kontrolleri — yüzen bar (düzeni bozmaz) */}
+      </div>
+
+      {/* Kontrol şeridi — tuvalin DIŞINDA, ekranın üstüne binmez */}
+      <div style={{ padding: '0 8px 6px', display: 'flex', flexDirection: 'column', gap: 5 }}>
+        {/* Seçili asset */}
         {selItem && (
-          <div className="flex items-center gap-2" style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', zIndex: 30, flexWrap: 'wrap', justifyContent: 'center', maxWidth: '96%', padding: '7px 9px', borderRadius: 12, background: 'rgba(10,12,24,0.9)', borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(255,255,255,0.14)', boxShadow: '0 10px 26px rgba(0,0,0,0.5)' }}>
+          <div className="flex items-center gap-2" style={{ flexWrap: 'wrap', padding: '6px 8px', borderRadius: 12, background: 'rgba(56,189,248,0.10)', borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(56,189,248,0.45)' }}>
             <div style={numWrap}>Gen<input type="number" style={numInput} value={Math.round(selItem.w * 100)} onChange={(e) => updateSel({ w: clamp((Number(e.target.value) || 0) / 100, 0.02, 1.5) })} /></div>
             <div style={numWrap}>X<input type="number" style={numInput} value={Math.round(selItem.x * 100)} onChange={(e) => updateSel({ x: (Number(e.target.value) || 0) / 100 })} /></div>
             <div style={numWrap}>Y<input type="number" style={numInput} value={Math.round(selItem.y * 100)} onChange={(e) => updateSel({ y: (Number(e.target.value) || 0) / 100 })} /></div>
-            <button onClick={() => makeBg(selItem.id)} style={btn}>Arka Plan</button>
-            <button onClick={() => del(selItem.id)} style={{ ...btn, background: 'linear-gradient(180deg,#ff5b64,#d51e2f)' }}>Sil</button>
+            <button
+              onClick={() => {
+                const next = ANIM_CYCLE[(ANIM_CYCLE.indexOf(selItem.anim) + 1) % ANIM_CYCLE.length]
+                updateSel({ anim: next })
+              }}
+              style={{ ...btn, flex: '0 0 auto', background: selItem.anim ? 'linear-gradient(180deg,#7c3aed,#3b82f6)' : btn.background }}
+            >
+              {selItem.anim ? ANIM_LABEL[selItem.anim] : 'Anim: Yok'}
+            </button>
+            <button onClick={() => makeBg(selItem.id)} style={{ ...btn, flex: '0 0 auto' }}>Arka Plan</button>
+            <button onClick={() => del(selItem.id)} style={{ ...btn, flex: '0 0 auto', background: 'linear-gradient(180deg,#ff5b64,#d51e2f)' }}>Sil</button>
           </div>
         )}
 
-        {/* Parça kontrolleri — yüzen bar */}
+        {/* Seçili parça (sahnenin kendi parçası) */}
         {editComp && selBlk && (
-          <div className="flex items-center gap-2" style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', zIndex: 30, flexWrap: 'wrap', justifyContent: 'center', maxWidth: '96%', padding: '7px 9px', borderRadius: 12, background: 'rgba(10,12,24,0.92)', borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(56,189,248,0.4)', boxShadow: '0 10px 26px rgba(0,0,0,0.5)' }}>
-            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 12.5, color: '#9fd0ff' }}>{BLK_LABELS[selBlk] || selBlk}</span>
+          <div className="flex items-center gap-2" style={{ flexWrap: 'wrap', padding: '6px 8px', borderRadius: 12, background: 'rgba(56,189,248,0.10)', borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(56,189,248,0.45)' }}>
+            <span style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 12.5, color: '#9fd0ff', whiteSpace: 'nowrap' }}>{BLK_LABELS[selBlk] || selBlk}</span>
             <div style={numWrap}>
               <button onClick={() => patchBlk({ s: clamp((elemLayout[selBlk]?.s ?? 1) - 0.1, 0.3, 3) })} style={{ ...btn, padding: '2px 9px' }}>−</button>
               <span className="tnum" style={{ minWidth: 34, textAlign: 'center', color: '#fff' }}>{Math.round((elemLayout[selBlk]?.s ?? 1) * 100)}%</span>
               <button onClick={() => patchBlk({ s: clamp((elemLayout[selBlk]?.s ?? 1) + 0.1, 0.3, 3) })} style={{ ...btn, padding: '2px 9px' }}>+</button>
             </div>
-            <button onClick={() => { patchBlk({ hidden: true }); setSelBlk(null) }} style={{ ...btn, background: 'linear-gradient(180deg,#ff5b64,#d51e2f)' }}>Sil</button>
-            <button onClick={resetBlk} style={btn}>Sıfırla</button>
+            <button onClick={() => { patchBlk({ hidden: true }); setSelBlk(null) }} style={{ ...btn, flex: '0 0 auto', background: 'linear-gradient(180deg,#ff5b64,#d51e2f)' }}>Sil</button>
+            <button onClick={resetBlk} style={{ ...btn, flex: '0 0 auto' }}>Sıfırla</button>
           </div>
         )}
 
-        {/* Gizlenen parçalar — geri getir */}
-        {editComp && hiddenIds.length > 0 && !selBlk && (
-          <div className="no-scrollbar flex items-center gap-1.5" style={{ position: 'absolute', left: '50%', bottom: 12, transform: 'translateX(-50%)', zIndex: 30, maxWidth: '96%', overflowX: 'auto', padding: '6px 9px', borderRadius: 12, background: 'rgba(10,12,24,0.92)', borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(255,255,255,0.14)' }}>
+        {/* Gizlenenler — geri getir */}
+        {editComp && hiddenIds.length > 0 && (
+          <div className="no-scrollbar flex items-center gap-1.5" style={{ overflowX: 'auto', padding: '5px 8px', borderRadius: 12, background: 'rgba(255,255,255,0.05)', borderWidth: 1, borderStyle: 'solid', borderColor: 'rgba(255,255,255,0.12)' }}>
             <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(255,255,255,0.55)', whiteSpace: 'nowrap' }}>Gizli:</span>
             {hiddenIds.map((id) => (
               <button key={id} onClick={() => restoreBlk(id)} style={{ ...btn, flex: '0 0 auto', padding: '5px 9px', fontSize: 11.5 }}>↩ {BLK_LABELS[id] || id}</button>
@@ -446,7 +523,7 @@ export function EditorScene({ onExit }: { onExit: () => void }) {
       </div>
 
       {/* Palette */}
-      <div className="pb-safe" style={{ padding: '8px', borderTop: '1px solid rgba(255,255,255,0.1)' }}>
+      <div className="pb-safe" style={{ padding: '8px', borderTop: '1px solid rgba(255,255,255,0.1)', display: palOpen ? undefined : 'none' }}>
         <div className="flex items-center gap-2" style={{ marginBottom: 6 }}>
           <label style={{ ...btn, background: 'linear-gradient(180deg,#7c3aed,#3b82f6)', cursor: 'pointer' }}>
             + Yükle

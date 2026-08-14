@@ -1,13 +1,17 @@
 import { motion, AnimatePresence } from 'framer-motion'
 import { useState } from 'react'
 import { IconArrowLeft } from '../components/icons'
+import { type EditProps } from '../lib/editable'
+import { ScreenExtras } from '../components/ScreenExtras'
 
 const EASE = [0.22, 1, 0.36, 1] as const
 
-export function JoinRoomScene({ onBack, onJoin }: { onBack: () => void; onJoin: (code: string) => void }) {
+export function JoinRoomScene({ onBack, onJoin, editMode = false }: { onBack: () => void; onJoin: (code: string) => void | Promise<string | null> } & EditProps) {
   const [code, setCode] = useState('')
   const [err, setErr] = useState(false)
+  const [msg, setMsg] = useState('Oda bulunamadı.')
   const [attempt, setAttempt] = useState(0)
+  const [busy, setBusy] = useState(false)
 
   const press = (d: string) => {
     if (code.length < 4) {
@@ -19,14 +23,16 @@ export function JoinRoomScene({ onBack, onJoin }: { onBack: () => void; onJoin: 
     setCode(code.slice(0, -1))
     setErr(false)
   }
-  const submit = () => {
-    if (code.length < 4) return
-    if (code === '0000') {
+  const submit = async () => {
+    if (code.length < 4 || busy) return
+    setBusy(true)
+    const res = await onJoin(`QZ-${code}`)
+    setBusy(false)
+    if (typeof res === 'string') {
+      setMsg(res + '.')
       setErr(true)
       setAttempt((a) => a + 1)
-      return
     }
-    onJoin(`QZ-${code}`)
   }
 
   const digits = [0, 1, 2, 3].map((i) => (i < code.length ? code[i] : null))
@@ -85,7 +91,7 @@ export function JoinRoomScene({ onBack, onJoin }: { onBack: () => void; onJoin: 
           <AnimatePresence>
             {err && (
               <motion.div initial={{ opacity: 0, y: -4 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }} style={{ color: 'var(--color-wrong)', fontSize: 13.5, fontWeight: 700 }}>
-                Oda bulunamadı.
+                {msg}
               </motion.div>
             )}
           </AnimatePresence>
@@ -130,6 +136,7 @@ export function JoinRoomScene({ onBack, onJoin }: { onBack: () => void; onJoin: 
           </motion.button>
         </div>
       </div>
+      {!editMode && <ScreenExtras screen="join" />}
     </motion.div>
   )
 }

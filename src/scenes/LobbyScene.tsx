@@ -4,6 +4,8 @@ import { useEffect, useRef, useState } from 'react'
 import { Avatar } from '../components/Avatar'
 import { IconArrowLeft, IconCopy, IconCheck, IconMic, IconMicOff, IconPlay } from '../components/icons'
 import { makeBp, loadLayout, type EditProps, type BlkProps } from '../lib/editable'
+import { ScreenExtras } from '../components/ScreenExtras'
+import { patchMe, startCloudRoom } from '../lib/rooms'
 import type { Member, Room } from '../lib/room'
 
 const RED = '#f0454f'
@@ -54,6 +56,7 @@ export function LobbyScene({
   room,
   onLeave,
   onStart,
+  cloudCode,
   editMode = false,
   layout,
   selectedId,
@@ -62,6 +65,7 @@ export function LobbyScene({
   room: Room
   onLeave: () => void
   onStart: (opponentName: string) => void
+  cloudCode?: string
 } & EditProps) {
   const [red, setRed] = useState<Member[]>(room.red)
   const [blue, setBlue] = useState<Member[]>(room.blue)
@@ -69,8 +73,15 @@ export function LobbyScene({
   const timers = useRef<number[]>([])
   const bp = makeBp(editMode ? layout : loadLayout('lobby'), editMode, selectedId, onBlockDown)
 
+  // Bulut odası: üye listesi dışarıdan (realtime) gelir
   useEffect(() => {
-    if (editMode) return
+    if (!cloudCode) return
+    setRed(room.red)
+    setBlue(room.blue)
+  }, [cloudCode, room])
+
+  useEffect(() => {
+    if (editMode || cloudCode) return
     room.red.forEach((m, i) => {
       if (!m.you) timers.current.push(window.setTimeout(() => setRed((l) => l.map((x, j) => (j === i && !x.you ? { ...x, ready: true } : x))), 800 + Math.random() * 3200))
     })
@@ -85,6 +96,11 @@ export function LobbyScene({
   const allReady = red.every((m) => m.ready) && blue.every((m) => m.ready)
 
   const toggleReady = () => {
+    const cur = (meOnRed ? red : blue).find((m) => m.you)?.ready ?? false
+    if (cloudCode) {
+      void patchMe(cloudCode, { ready: !cur })
+      return
+    }
     const upd = (l: Member[]) => l.map((m) => (m.you ? { ...m, ready: !m.ready } : m))
     if (meOnRed) setRed(upd)
     else setBlue(upd)
@@ -128,6 +144,10 @@ export function LobbyScene({
   }
 
   const start = () => {
+    if (cloudCode) {
+      void startCloudRoom(cloudCode) // herkes aynı anda maça geçer
+      return
+    }
     const foes = meOnRed ? blue : red
     onStart(foes[0]?.name ?? 'Rakip')
   }
@@ -234,6 +254,7 @@ export function LobbyScene({
           </motion.button>
         </div>
       </div>
+      {!editMode && <ScreenExtras screen="lobby" />}
     </motion.div>
   )
 }

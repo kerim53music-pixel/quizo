@@ -5,6 +5,7 @@ import { Avatar } from '../components/Avatar'
 import { RankBadge } from '../components/RankBadge'
 import { formatNumber } from '../lib/format'
 import { makeBp, loadLayout, type EditProps, type BlkProps } from '../lib/editable'
+import { ScreenExtras } from '../components/ScreenExtras'
 import type { Fighter } from '../lib/player'
 
 const EASE = [0.22, 1, 0.36, 1] as const
@@ -21,18 +22,26 @@ function FighterCard({ f, side, delay, blk, editMode }: { f: Fighter; side: 'me'
       transition={{ type: 'spring', stiffness: 170, damping: 20, delay }}
       style={
         {
-          borderRadius: 18,
-          padding: '14px 16px',
+          borderRadius: 22,
+          padding: '16px 18px',
           display: 'flex',
           alignItems: 'center',
           gap: 14,
           width: '100%',
-          maxWidth: 330,
-          borderColor: `${c}66`,
+          maxWidth: 340,
+          background: 'linear-gradient(140deg, rgba(24,30,68,0.94), rgba(9,12,30,0.9))',
+          borderWidth: 2,
+          borderStyle: 'solid',
+          borderColor: c,
+          boxShadow: `inset 0 1px 0 rgba(255,255,255,0.22), inset 0 -10px 20px rgba(0,0,0,0.35), 0 12px 34px -10px ${c}aa, 0 0 46px -14px ${c}`,
+          backdropFilter: 'blur(12px)',
+          WebkitBackdropFilter: 'blur(12px)',
           ...(blk?.style || {}),
         } as CSSProperties
       }
     >
+      {/* üst cam parlaması */}
+      <span aria-hidden="true" style={{ position: 'absolute', top: 3, left: 14, right: '42%', height: '32%', borderRadius: 999, background: 'linear-gradient(180deg, rgba(255,255,255,0.30), rgba(255,255,255,0))', pointerEvents: 'none' }} />
       <div
         aria-hidden="true"
         style={{
@@ -43,13 +52,13 @@ function FighterCard({ f, side, delay, blk, editMode }: { f: Fighter; side: 'me'
       />
       <Avatar name={f.name} size={56} />
       <div className="relative min-w-0 flex-1">
-        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 19 }}>{f.name.toUpperCase()}</div>
+        <div style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 21, letterSpacing: '0.02em', color: '#fff', textShadow: `0 2px 10px ${c}80` }}>{f.name.toUpperCase()}</div>
         <div className="flex items-center gap-1" style={{ color: 'var(--color-ink-2)', fontSize: 12.5, fontWeight: 600 }}>
           {f.city} · <RankBadge size={12} />
           <span style={{ color: c }}>{f.league}</span>
         </div>
       </div>
-      <div className="tnum relative" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 18, color: c }}>
+      <div className="tnum relative" style={{ fontFamily: 'var(--font-display)', fontWeight: 800, fontSize: 19, color: '#ffd05e', textShadow: '0 2px 8px rgba(245,158,11,0.55)' }}>
         {formatNumber(f.qp)}
       </div>
     </motion.div>
@@ -96,7 +105,7 @@ export function VsScene({
       <div aria-hidden="true" style={{ position: 'absolute', top: 0, left: 0, bottom: 0, width: '55%', background: 'radial-gradient(120% 90% at 0% 50%, rgba(96,165,250,0.16), transparent 60%)' }} />
       <div aria-hidden="true" style={{ position: 'absolute', top: 0, right: 0, bottom: 0, width: '55%', background: 'radial-gradient(120% 90% at 100% 50%, rgba(240,69,79,0.16), transparent 60%)' }} />
 
-      <div className="relative z-[1] flex h-full flex-col items-center justify-center gap-3 px-5">
+      <div className="relative flex h-full flex-col items-center justify-center gap-3 px-5" style={{ zIndex: 8 }}>
         <FighterCard f={me} side="me" delay={0.15} blk={bp('me-card')} editMode={editMode} />
 
         <div onPointerDown={bp('vs').onPointerDown} style={{ position: 'relative', margin: '2px 0', ...bp('vs').style }}>
@@ -152,6 +161,7 @@ export function VsScene({
           </motion.div>
         )}
       </AnimatePresence>
+      {!editMode && <ScreenExtras screen="vs" />}
     </motion.div>
   )
 }

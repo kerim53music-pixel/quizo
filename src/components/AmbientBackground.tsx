@@ -10,12 +10,9 @@ export function AmbientBackground() {
     <div
       className="ambient"
       aria-hidden="true"
-      style={{ background: 'radial-gradient(135% 95% at 50% -8%, #7059ec 0%, #4a34c2 46%, #2a1c7a 100%)' } as CSSProperties}
+      style={{ background: 'radial-gradient(130% 95% at 50% -8%, #0c1024 0%, #070a16 48%, #04050a 100%)' } as CSSProperties}
     >
-      <div className="blob blob-violet" />
-      <div className="blob blob-azure" />
-      <div className="blob blob-gold" />
-      <ParticleField count={16} />
+      <ParticleField count={12} />
     </div>
   )
 }
